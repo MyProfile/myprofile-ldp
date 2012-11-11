@@ -60,7 +60,7 @@ if (isset($_REQUEST['submit'])) {
     $cf_status = "<p><font color=\"green\"><strong>Success!</strong></font> Configuration file has been saved to disk.</p>\n";
     
     // create cache dir if it doesn't exist
-    if (!is_dir('cache/')) {
+    if (!is_dir('../cache/')) {
         if (!mkdir('cache/', 0775))
             die('Failed to create cache/ dir...');
         $cache_status = "<p><font color=\"green\"><strong>Success!</strong></font> Cache dir has been created.</p>\n";
@@ -69,8 +69,8 @@ if (isset($_REQUEST['submit'])) {
     }
     
     // create logs dir if it doesn't exist
-    if (!is_dir('logs/')) {
-        if (!mkdir('logs/', 0775))
+    if (!is_dir('../logs/')) {
+        if (!mkdir('../logs/', 0775))
             die('Failed to create logs/ dir...');
         $logs_status = "<p><font color=\"green\"><strong>Success!</strong></font> Logs dir has been created.</p>\n";
     } else {
@@ -78,8 +78,8 @@ if (isset($_REQUEST['submit'])) {
     }
     
     // create dir where we store profiles if it doesn't exist
-    if (!is_dir('people/')) {
-        if (!mkdir('people/', 0775))
+    if (!is_dir('../people/')) {
+        if (!mkdir('../people/', 0775))
             die('Failed to create people/ dir...');
         $people_status = "<p><font color=\"green\"><strong>Success!</strong></font> Profile root dir has been created.</p>\n";
     } else {
@@ -102,7 +102,7 @@ if (isset($_REQUEST['submit'])) {
     $ret .= "<div style=\"width: 600px;\">\n";
     $ret .= "<p><font align=\"left\" style=\"font-size: 2em; text-shadow: 0 1px 1px #cccccc;\">MyProfile LDP Installation</font></p>\n";
     
-    $ret .= "<form action=\"\" method=\"POST\">\n";
+    $ret .= "<form action=\"\" method=\"GET\">\n";
     $ret .= "<p>For security reasons, once the installation is complete, you should remove this file (<strong>/public/install.php</strong>).</p>\n";
     
     $ret .= "<table>\n";
