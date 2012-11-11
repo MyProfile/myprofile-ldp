@@ -43,7 +43,7 @@ require 'Classes/LDP.php';
 // Load WebIDauth class
 require 'Classes/WebidAuth.php';
 // Load Wall class
-require 'Classes/Wall.php';
+//require 'Classes/Wall.php';
 
 // load controller
 require 'Controllers/Request.php';

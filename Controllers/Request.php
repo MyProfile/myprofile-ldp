@@ -8,10 +8,10 @@
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
  *  copies of the Software, and to permit persons to whom the Software is furnished 
  *  to do so, subject to the following conditions:
-
+ *
  *  The above copyright notice and this permission notice shall be included in all 
  *  copies or substantial portions of the Software.
-
+ *
  *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
  *  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
  *  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
@@ -64,23 +64,20 @@ class Request
             // setting the app object
             $this->app = $app;
             // requested URI           
-            $this->reqURI = $reqURI;
-            // data
-            $this->data = $data;
-            
+            $this->reqURI = $reqURI;            
             // Use turtle by default 
-            $format = 'turtle';
+            $format = 'Turtle';
             // Set format based on the request
             $headerType = $this->app->request()->headers('Accept');
             if (strstr($headerType, 'application/rdf+xml')) {
-                $format = 'rdfxml'; 
+                $format = 'RDFXML'; 
             } else if (strstr($headerType, 'n3')) {
-                $format = 'n3';
-            } else if (strstr($headerType, 'text/turtle')) {
-                $format = 'turtle';              
+                $format = 'N3';
+            } else if (strstr($headerType, 'turtle')) {
+                $format = 'Turtle';              
             } else if (strstr($headerType, 'ntriples')) {
-                $format = 'ntriples';  
-            } else if (strstr($headerType, 'text/html')) {
+                $format = 'NTriples';  
+            } else if (strstr($headerType, 'html')) {
                 $format = 'html';
             } 
             $this->format = $format;
@@ -92,43 +89,34 @@ class Request
         // Check to see if we have a container for each path level of 
         // the request, otherwise recursively create containers
         // Start with first element
-        $this->data = $data;
 
-        $level = ''; 
-        $i=0;
-        while ($i < sizeof($this->reqURI)) {
-            // add the current level to the previous path
-            $level .= '/'.$this->reqURI[$i];
-            // create the current base path
-            $base = BASE_URI.$level;
-                
-            // Search if a graph exists for current level
-            $localGraph = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
-            $localGraph->load();
-            $type = $localGraph->get_type();
-            echo '<br/>Level='.$base.' | Type='.$type; 
+        // Create path from the request
+        $path = implode('/', $this->reqURI);
+        // Create the full path including host name
+        $base = BASE_URI.'/'.$path;
+            
+        // Prepare container/resource as requested
+        $remoteGraph = new Graphite();
+        $count = $remoteGraph->addTurtle($base, $data);
+        
+        $type = $remoteGraph->resource($base)->get("rdf:type");
+        
+        //echo "<pre>".$remoteGraph->dumpText()."</pre>";
+        echo '<br/>Level='.$base.' | Type='.$type; 
 
-            // Create container/resource as requested
-            $remoteGraph = new Graphite();
-            $remoteGraph->addTurtle($base, $this->data);
-                
-            $res = $remoteGraph->resource($base);
-            $cont = $remoteGraph->allOfType('ldp:Container');
-            $res = $remoteGraph->allOfType('ldp:Resource');
-
-            if (sizeof($cont) > 0) {
-                // add container
-                $container = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
-                $ok = $container->add_container($this->data);
-            } else if (sizeof($res) > 0) {
-                // add resource
-                $resource = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
-                $resource->add_resource();
-            }
-
-            $i++;
+        if ($type == 'http://www.w3.org/ns/ldp#Container') {
+            // add container
+            $container = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
+            $ok = $container->add_container($path, $data);
+            if ($ok == true)
+                echo "<br/>Added container at ".$base."<br/>";
+            else
+                echo "<br/>Cannot add container for ".$base."<br/>";
+        } else if ($type == 'http://www.w3.org/ns/ldp#Resource') {
+            // add resource
+            $resource = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
+            $resource->add_resource();
         }
-
     }
 
     /**
@@ -141,19 +129,19 @@ class Request
      */
     public function get()
     {
-        
-        $res = new Resource($this->reqURI, BASE_URI, SPARQL_ENDPOINT);
-        $res->loadLocal();
+        $path = implode('/', $this->reqURI);
+        $res = new LDP($path, BASE_URI, SPARQL_ENDPOINT);
+        $res->load();
 
-        if ($res->get_graph()->isEmpty())  {
-            $this->body = 'Resource '.$this->reqURI.' not found.';
+        if (sizeof($res->get_graph()) == 0)  {
+            $this->body = 'Resource '.$path.' not found.';
             $this->status = 404;
         } else {   
             $this->etag = $res->get_etag();
 
             // return RDF or text
             if ($this->format !== 'html') {
-                $this->body = $res->serialise($this->format);
+                $this->body = $res->serialize($this->format);
             } else {
                 include 'views/tabulator/index.php';
             }

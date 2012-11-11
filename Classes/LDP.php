@@ -1,3 +1,4 @@
+
 <?php
 /**
  *  Copyright (C) 2012 MyProfile Project
@@ -8,10 +9,10 @@
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
  *  copies of the Software, and to permit persons to whom the Software is furnished 
  *  to do so, subject to the following conditions:
-
+ *
  *  The above copyright notice and this permission notice shall be included in all 
  *  copies or substantial portions of the Software.
-
+ *
  *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
  *  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
  *  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
@@ -72,7 +73,7 @@ class LDP
      * (optionally fallback to Graphite if there is a problem with the SPARQL
      * endpoint )
      *
-     * @return true
+     * @return integer number of triples loaded
      */
     function sparql_graph() {
         // Query the local store for the requested resource
@@ -91,43 +92,43 @@ class LDP
             $graph = new Graphite();
             $count = $graph->loadSPARQL($this->endpoint, $query);
             $this->graph = $graph;
-        }
-        return true;
+            return $count;
+        }       
     }
     
     /** 
      * Build the grap using EasyRdf
      *
-     * @return true
+     * @return integer number of triples loaded
      */
     function direct_graph() {
         // Load the RDF graph data
         $graph = new Graphite();
-        $graph->load($this->reqURI);
+        $count = $graph->load($this->reqURI);
         $this->graph = $graph;
 
-        return true;
+        return $count;
     }
     
     /** 
      * Load the requested URI data (priority is for SPARQL, otherwise go with EasyRdf)
      *
-     * @return true
+     * @return integer numbre of triples loaded
      */
     function load() {
         // check if we have a SPARQL endpoint configured
         if (strlen($this->endpoint) > 0) {
             // use the SPARQL endpoint 
-            $this->sparql_graph();
+            $count = $this->sparql_graph();
         } else {
             // use the direct method (EasyRdf)
-            $this->direct_graph();
+            $count = $this->direct_graph();
         }
         
         // generate eTag hash from graph contents (used for caching)
         $this->etag = sha1(print_r($this->graph, true));
         
-        return true;
+        return $count;
     }
     
     /**
@@ -152,32 +153,47 @@ class LDP
     
     /**
      * Store container RDF data into the triple store
-     * return boolean
+     * @param string    $path       file system path
+     * @param string    $rdf        the rdf data from the request
+     * @param boolean   $overwrite  overwrite the local graph or not
+     * @return boolean
      */
-    function add_container($rdf) {
-        $graph = new Graphite();
-        $count = $graph->addTurtle($this->reqURI, $rdf);
-        
-        if ($count > 0) {
-            $descr = $graph->resource($this->reqURI)->get('dcterms:title');
+    function add_container($path, $rdf, $overwrite=false) {
+        $remoteGraph = new Graphite();
+        $count = $remoteGraph->addTurtle($this->reqURI, $rdf);
+        $remoteRes = $remoteGraph->resource($this->reqURI);
+
+        // Check if a local graph exists already 
+        $count = $this->load();
+
+        //echo "<br/>Local dump:<pre>".print_r($this->graph, true)."</pre>";
+        echo "<br/>Size=".$count;
+
+        // Store graph only if it doesn't exist of if we have a PUT req
+        if (($count == 0) || ($overwrite == true)) {
             $db = sparql_connect($this->endpoint);
-            $query = '  PREFIX ldp: <http://www.w3.org/ns/ldp#>
-                        PREFIX dcterms: <http://purl.org/dc/terms/>
-                        INSERT INTO GRAPH <'.$this->reqURI.'> {
-                        <'.$this->reqURI.'> a ldp:Container;
-                                            dcterms:title "'.$descr.'".
-                        }';
+            $query = 'PREFIX acl: <http://www.w3.org/ns/auth/acl#>
+                    PREFIX ldp: <http://www.w3.org/ns/ldp#>
+                    PREFIX dcterms: <http://purl.org/dc/terms/>
+                    INSERT INTO GRAPH <'.$this->reqURI.'> {
+                    <'.$this->reqURI.'> a ldp:Container;
+                                        dcterms:title "'.$remoteRes->get('dcterms:title').'".
+                    }';
             $result = $db->query($query);
 
-            return 0;
+            if (!$result)
+                return false;
+            else
+                return true;
         } else {
-            return 1;
+            return false;
         }
     }
     
     /**
      * Get the last modified date in unix format
-     * return string
+     *
+     * @return string
      */
     function get_etag() {
         return $this->etag;
@@ -195,11 +211,11 @@ class LDP
     /** 
      * Get the whole graph, serialized in the specified format
      *
-     * @param string $format    serialization format (e.g. rdfxml, n3, etc.)
+     * @param string $format    serialization format (e.g. turtle, n3, etc.)
      * @return string
      */
-    function serialise($format) {
-        return $this->graph->serialise($format);
+    function serialize($format) {
+        return $this->graph->serialize($format);
     }
 
     /**
