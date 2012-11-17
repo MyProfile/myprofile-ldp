@@ -42,6 +42,8 @@ class Request
     private $etag;
     /** Request data */
     private $data;
+    /** Errors array */
+    private $errors = array();
         
     // hack until proper AC is used
     //private $allowed_users = array("https://my-profile.eu/people/deiu/card#me", 
@@ -70,13 +72,13 @@ class Request
             // Set format based on the request
             $headerType = $this->app->request()->headers('Accept');
             if (strstr($headerType, 'application/rdf+xml')) {
-                $format = 'RDFXML'; 
+                $format = 'rdfxml'; 
             } else if (strstr($headerType, 'n3')) {
-                $format = 'N3';
+                $format = 'n3';
             } else if (strstr($headerType, 'turtle')) {
-                $format = 'Turtle';              
+                $format = 'turtle';              
             } else if (strstr($headerType, 'ntriples')) {
-                $format = 'NTriples';  
+                $format = 'ntriples';  
             } else if (strstr($headerType, 'html')) {
                 $format = 'html';
             } 
@@ -84,64 +86,69 @@ class Request
         }
     }
 
-    
+    /**
+     * POST data to an ldp:Container or to an ldp:Resource
+     * @param string $data  RDF representation of the request
+     * 
+     * @return string   the URI of the new Container/Resource
+     */
     public function post($data) {
         // Check to see if we have a container for each path level of 
         // the request, otherwise recursively create containers
         // Start with first element
 
-        // Create path from the request
-        $path = implode('/', $this->reqURI);
         // Create the full path including host name
-        $base = BASE_URI.'/'.$path;
+        $path = $this->reqURI;
+        $uri = BASE_URI.'/'.$path;
             
-        // Prepare container/resource as requested
+        // Get the type of the request (container/resource)
         $remoteGraph = new Graphite();
-        $count = $remoteGraph->addTurtle($base, $data);
-        
-        $type = $remoteGraph->resource($base)->get("rdf:type");
-        
-        //echo "<pre>".$remoteGraph->dumpText()."</pre>";
-        echo '<br/>Level='.$base.' | Type='.$type; 
+        $count = $remoteGraph->addTurtle($uri, $data);
+        $type = $remoteGraph->resource($uri)->type();
 
         if ($type == 'http://www.w3.org/ns/ldp#Container') {
-            // add container
-            $container = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
-            $ok = $container->add_container($path, $data);
-            if ($ok == true)
-                echo "<br/>Added container at ".$base."<br/>";
-            else
-                echo "<br/>Cannot add container for ".$base."<br/>";
+            // Add trailing slash if missing
+            if (substr($uri, -1) != '/') {
+                $uri .= '/';
+                $path .= '/';
+            }
+            // Add container
+            $container = new LDP($uri, BASE_URI, SPARQL_ENDPOINT);
+            $status = $container->add_container($path, $data);
+            $this->status = $status;
         } else if ($type == 'http://www.w3.org/ns/ldp#Resource') {
             // add resource
-            $resource = new LDP($base, BASE_URI, SPARQL_ENDPOINT);
-            $resource->add_resource();
+            $resource = new LDP($uri, BASE_URI, SPARQL_ENDPOINT);
+            $status = $resource->add_resource();
+            $this->status = $status;
+        } else {
+            $this->status = 501; // only implemented for Containers/Resources
         }
+        // debug
+        array_push($this->errors, 'Level='.$uri.' | Type='.$type);
+        return rtrim($uri);
     }
 
     /**
-     * Display a user's profile based on the requested format
-     * (sets the HTTP response body contents and status code)
-     *
-     * @param string $on_behalf the WebID on behalf of whom the request is made
+     * GET data from an ldp:Container or to an ldp:Resource
      *
      * @return void
      */
     public function get()
     {
-        $path = implode('/', $this->reqURI);
-        $res = new LDP($path, BASE_URI, SPARQL_ENDPOINT);
-        $res->load();
+        $uri = BASE_URI.'/'.$this->reqURI;
+        $ldp = new LDP($uri, BASE_URI, SPARQL_ENDPOINT);
+        $ldp->load();
 
-        if (sizeof($res->get_graph()) == 0)  {
-            $this->body = 'Resource '.$path.' not found.';
+        if ($ldp->isEmpty() == true)  {
+            $this->body = 'Resource '.$uri.' not found.';
             $this->status = 404;
         } else {   
-            $this->etag = $res->get_etag();
+            $this->etag = $ldp->get_etag();
 
             // return RDF or text
             if ($this->format !== 'html') {
-                $this->body = $res->serialize($this->format);
+                $this->body = $ldp->serialise($this->format);
             } else {
                 include 'views/tabulator/index.php';
             }
@@ -153,7 +160,7 @@ class Request
      * Get the etag hash for the requested data.
      * @return string
      */
-    function get_etag()
+    public function get_etag()
     {
         return $this->etag;
     }
@@ -164,7 +171,7 @@ class Request
      * @param string $requestOwner the user requesting the delete action
      * @return boolean
      */
-    function deleteCache($requester)
+    public function deleteCache($requester)
     {
         $allowed = false; // for now
         $requester = $this->hashless($requester);
@@ -199,7 +206,7 @@ class Request
      *
      * @return string
      */
-    function get_body()
+    public function get_body()
     {
         return $this->body;
     }
@@ -209,16 +216,26 @@ class Request
      *
      * @return integer
      */
-    function get_status()
+    public function get_status()
     {
         return $this->status;
     }
     
+    /** 
+     * Return any errors we may have encountered
+     * @return string
+     */
+    public function get_errors() {
+        foreach ($this->errors as $err) {
+            echo "<br/>".$err;
+        }
+    }
+
     /**
      * Return a URI without the hash fragment (#me)
      * @return string
      */
-    function hashless($uri)
+    public function hashless($uri)
     {
         $uri = explode('#', $uri);
         return $uri[0];

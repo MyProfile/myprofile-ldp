@@ -73,12 +73,13 @@ class LDP
      * (optionally fallback to Graphite if there is a problem with the SPARQL
      * endpoint )
      *
-     * @return integer number of triples loaded
+     * @return void
      */
-    function sparql_graph() {
+    public function sparql_graph() {
         // Query the local store for the requested resource
         $db = sparql_connect($this->endpoint);
-        $query = '"""SELECT * FROM <'.$this->reqURI.'> WHERE { ?s ?p ?o }"""';
+        $query = 'SELECT * FROM <'.$this->reqURI.'> WHERE { ?s ?p ?o }';
+
         $result = $db->query($query);
 
         // fallback to EasyRdf if there's a problem with the SPARQL endpoint
@@ -88,11 +89,12 @@ class LDP
             $query = "PREFIX dcterms: <http://purl.org/dc/terms/> ";
             $query .= "PREFIX ldp: <http://www.w3.org/ns/ldp#> ";
             $query .= "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH <".$this->reqURI."> { ?s ?p ?o } }";
-     
-            $graph = new Graphite();
-            $count = $graph->loadSPARQL($this->endpoint, $query);
+            
+            //echo "DEBUG: SPARQL query=".$this->endpoint.'?query='.urlencode($query);
+
+            $sparql = new EasyRdf_Sparql_Client($this->endpoint); 
+            $graph = $sparql->query($query);
             $this->graph = $graph;
-            return $count;
         }       
     }
     
@@ -103,7 +105,7 @@ class LDP
      */
     function direct_graph() {
         // Load the RDF graph data
-        $graph = new Graphite();
+        $graph = new EasyRdf_Graph();
         $count = $graph->load($this->reqURI);
         $this->graph = $graph;
 
@@ -113,42 +115,20 @@ class LDP
     /** 
      * Load the requested URI data (priority is for SPARQL, otherwise go with EasyRdf)
      *
-     * @return integer numbre of triples loaded
+     * @return void
      */
-    function load() {
+    public function load() {
         // check if we have a SPARQL endpoint configured
         if (strlen($this->endpoint) > 0) {
             // use the SPARQL endpoint 
-            $count = $this->sparql_graph();
+            $this->sparql_graph();
         } else {
             // use the direct method (EasyRdf)
-            $count = $this->direct_graph();
+            $this->direct_graph();
         }
         
         // generate eTag hash from graph contents (used for caching)
         $this->etag = sha1(print_r($this->graph, true));
-        
-        return $count;
-    }
-    
-    /**
-     * Check if the graph is of type ldp:Container or ldp:Resource
-     * return string|null
-     */
-    function get_type() {
-        $res = $this->graph->resource($this->reqURI);
-        if ($res) {
-            $cont = $res->get("ldp:Container");
-            $res = $res->get("ldp:Resource");
-            if ($cont != '[NULL]' )
-                return $cont;
-            else if ($res != '[NULL]')
-                return $res;
-            else
-                return null;
-        } else {
-            return null;
-        }
     }
     
     /**
@@ -156,37 +136,55 @@ class LDP
      * @param string    $path       file system path
      * @param string    $rdf        the rdf data from the request
      * @param boolean   $overwrite  overwrite the local graph or not
-     * @return boolean
+     * @return integer  HTTP response code
      */
     function add_container($path, $rdf, $overwrite=false) {
+        $exists = false;
+
         $remoteGraph = new Graphite();
-        $count = $remoteGraph->addTurtle($this->reqURI, $rdf);
+        $remoteGraph->addTurtle($this->reqURI, $rdf);
         $remoteRes = $remoteGraph->resource($this->reqURI);
 
         // Check if a local graph exists already 
-        $count = $this->load();
+        $this->sparql_graph();
 
-        //echo "<br/>Local dump:<pre>".print_r($this->graph, true)."</pre>";
-        echo "<br/>Size=".$count;
+        if ($this->isContainer() == true)
+            $exists = true;
 
-        // Store graph only if it doesn't exist of if we have a PUT req
-        if (($count == 0) || ($overwrite == true)) {
+        // Store graph only if it doesn't exist of if we have a PUT request
+        if (($exists == false) || ($overwrite == true)) {
             $db = sparql_connect($this->endpoint);
             $query = 'PREFIX acl: <http://www.w3.org/ns/auth/acl#>
                     PREFIX ldp: <http://www.w3.org/ns/ldp#>
                     PREFIX dcterms: <http://purl.org/dc/terms/>
-                    INSERT INTO GRAPH <'.$this->reqURI.'> {
-                    <'.$this->reqURI.'> a ldp:Container;
-                                        dcterms:title "'.$remoteRes->get('dcterms:title').'".
+                    INSERT DATA INTO <'.$this->reqURI.'> {
+                        <'.$this->reqURI.'> rdf:type ldp:Container;
+                                            dcterms:title "'.$remoteRes->get('dcterms:title').'".
                     }';
             $result = $db->query($query);
-
-            if (!$result)
-                return false;
-            else
-                return true;
-        } else {
-            return false;
+            if ($result) {
+                $ret = 201;
+            } else {
+                $ret = 500; // We have an error
+                echo "SPARQL Error: cannot create the container!";
+            }
+            // Create directory on the file system
+            /*
+            if (!is_dir('../conf/')) {
+                if (!mkdir('../conf/', 0775))
+                    die('Failed to create conf/ dir...');
+                $status = "<p><font color=\"green\"><strong>Success!</strong></font>";
+                $status .=" Configuration dir has been created.</p>\n";
+                $ok = true;
+            } else {
+                $status = "<p><strong>Skipped.</strong> Configuration dir already exists.</p>\n";
+            }
+            */
+            return $ret;
+        } else if ($exists == true) {
+            // The requested path already exists - the reqest still succeeded
+            $ret = 200;
+            return $ret;
         }
     }
     
@@ -209,13 +207,13 @@ class LDP
     }
     
     /** 
-     * Get the whole graph, serialized in the specified format
+     * Get the whole graph, serialised in the specified format
      *
-     * @param string $format    serialization format (e.g. turtle, n3, etc.)
+     * @param string $format    serialisation format (e.g. turtle, n3, etc.)
      * @return string
      */
-    function serialize($format) {
-        return $this->graph->serialize($format);
+    public function serialise($format) {
+        return $this->graph->serialise($format);
     }
 
     /**
@@ -225,13 +223,53 @@ class LDP
      *
      * @return boolean
      */ 
-    function is_local($webid) {
+    private function is_local($webid) {
         $webid = (isset($webid)) ? $webid : $this->reqURI;
         if (strstr($webid, $_SERVER['SERVER_NAME']))
             return true;
         else
             return false;
     }
+    
+    /**
+     * Check if the graph is empty or not
+     *
+     * @return boolean  Yes if graph is empty
+     */
+    public function isEmpty() {
+        return $this->graph->isEmpty();
+    }
+    
+    /**
+     * Get the type of the graph/resource
+     *
+     * @param string $uri   the resource URI
+     * @return string       the resource type
+     */
+    public function get_type($uri) {
+        return $this->graph->resource($uri)->get('rdf:type');
+    }
+    
+    /**
+     * Check if the graph is a container or not
+     * @return boolean  True if it is a container
+     */
+    private function isContainer() {
+        $type = $this->graph->resource($this->reqURI)->get('rdf:type');
+        if ($type == 'http://www.w3.org/ns/ldp#Container')
+            return true;
+        else
+            return false;
+    }
+    
+    /**
+     * Check if the graph is a resource or not
+     * @return boolean  True if it is a resource
+     */
+    private function isResource() {
+        $r = $this->graph->resource($this->reqURI);
+        return ($r->type() == 'http://www.w3.org/ns/ldp#Resource') ? true : false;
+     }
     
     /**
      * Get local path for user (only if it's a local user)

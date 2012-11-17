@@ -8,10 +8,10 @@
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
  *  copies of the Software, and to permit persons to whom the Software is furnished 
  *  to do so, subject to the following conditions:
-
+ *
  *  The above copyright notice and this permission notice shall be included in all 
  *  copies or substantial portions of the Software.
-
+ *
  *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
  *  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
  *  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
@@ -36,6 +36,7 @@ require 'lib/logger.php';
 // RDF libs
 require 'lib/arc/ARC2.php';
 require 'lib/Graphite.php';
+require 'lib/EasyRdf.php';
 require 'lib/sparqllib.php';
 
 // Load local classes
@@ -82,16 +83,18 @@ $app->config(array(
 
 $error_codes = array(
     '200' => '200 OK',
+    '201' => '201 Created',
     '400' => '400 Bad request',
     '401' => '401 Unauthorized',
     '403' => '403 Forbidden',
-    '404' => '404 Not found'
+    '404' => '404 Not found',
+    '500' => '500 Internal Server Error'
 );
 
 
 /* ---- ROUTES ---- */
 
-// Redirect all requests made to /, to /user/
+/* Main (index) route*/
 $app->get('/', function () use ($app) {
     $base = BASE_URI;
     $version = VERSION;
@@ -100,26 +103,63 @@ $app->get('/', function () use ($app) {
 
 $app->get('/people', function() use ($app, $log) {
     echo "Displaying all people";    
+    $app->response()->status(501); // not implemented
 });
 
+/* GET from LDP */
 $app->get('/:reqURI+', function($reqURI) use ($app, $log) {
-    echo print_r($reqURI, true);
+    //echo print_r($reqURI, true);
+    // Try to authenticate request using WebID-TLS
+    $auth = new WebidAuth();
+    $isAuthenticated = $auth->processReq();
+    if ($isAuthenticated === true) {
+        $user = $auth->getIdentity();
+        $reqURI = implode('/',$reqURI);
 
-    $req_ctrl = new Request($app, $reqURI);
-    $req_ctrl->get();
+        $req_ctrl = new Request($app, $reqURI);
+        $req_ctrl->get();
+        $app->response()->body($req_ctrl->get_body());
+        $app->response()->status($req_ctrl->get_status());
+    } else {
+        $app->response()->status(401);
+    }
 });
 
-$app->post('/:reqURI+', function($reqURI) use ($app, $log) {
+/* POST to LDP */
+$app->post('/ldp/:reqURI+', function($reqURI) use ($app, $log) {
     $env = $app->environment();
     $data = $env['slim.input'];
+    // Create path from the request
+    $path = implode('/', $reqURI);
 
-    // DEBUG
-    echo "<pre>".htmlentities($data)."</pre>";
+    // Try to authenticate request using WebID-TLS
+    $auth = new WebidAuth();
+    $isAuthenticated = $auth->processReq();
+    if ($isAuthenticated === true) {
+        $user = $auth->getIdentity();
+        $hashUser = substr(sha1($user), 0, 8);
+        $path = 'ldp/'.$hashUser.'/'.$path;
+        // DEBUG
+        //echo "<pre>User: ".$user."<br/>Hash: ".$hashUser."<br/>".htmlentities($data)."</pre>";
 
-    $req_ctrl = new Request($app, $reqURI);
-    $req_ctrl->post($data);
+        $req_ctrl = new Request($app, $path);
+        $newURI = $req_ctrl->post($data);
+        //$req_ctrl->get_errors();
+
+        // Set the appropriate response code
+        $app->response()->body($newURI);
+        $app->response()->status($req_ctrl->get_status());
+    } else {
+        $app->response()->status(401);
+    }
+
 });
 
+
+/* POST to root */
+$app->post('/:reqURI+', function($reqURI) use ($app, $log) {
+    $app->response()->status(501); // not implemented
+});
 
 /*
 // GET a local user's profile

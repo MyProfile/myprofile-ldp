@@ -10,6 +10,7 @@ class TestRequest
     private $putFile;
     private $putSize;
     private $title;
+    private $results;
 
     private $cert_path = '/var/www/auth/public/tests/agentWebID.pem';
     private $cert_pass = '1234';
@@ -18,9 +19,10 @@ class TestRequest
         if ($uri)
             $this->uri = $uri;
     }
-    
+
     public function testHTML() {
-        $result = $this->connect();
+        $this->connect();
+        $result = $this->results;
         $ret = "<p><table>\n";
         $ret .= "<tr><td colspan=\"3\"><strong>".$this->title."</strong></td></tr>\n";
         $ret .= "<tr>\n";
@@ -38,7 +40,8 @@ class TestRequest
         $ret .= "   </td>\n";
         $ret .= "</tr>\n";
         $ret .= "<tr>\n";
-        $ret .= "<td colspan=\"3\"><pre>Content:<br/>".$result['content']."</pre></td>\n";
+        $ret .= "<td colspan=\"3\"><pre><strong>Response body:</strong>\n";
+        $ret .= "   ".htmlentities($result['content'])."</pre></td>\n";
         $ret .= "</tr>\n";
         $ret .= "</table></p>\n";
         return $ret;
@@ -46,16 +49,6 @@ class TestRequest
     
     
     /**ldp
-     * Load RDF data into the graph from a URI.
-     *
-     * If no URI is given, then the URI of the graph will be used.
-     *
-     * The docurunment type is optional but should be specified if it
-     * can't be guessed or got from the HTTP headers.
-     *
-     * @param  string  $uri     The URI of the data to load
-     * @param  string  $format  Optional format of the data (eg. rdfxml)
-     * @return integer          The number of triples added to the graph
      */
     public function connect() {
 
@@ -98,7 +91,7 @@ class TestRequest
             // Close the connection
             curl_close($ch); 
         } 
-        return array("content" => $content, "info" => $info);
+        $this->results = array("content" => $content, "info" => $info);
     }
         
     function setUri($uri) {
@@ -129,6 +122,14 @@ class TestRequest
     
     function setTitle($title) {
         $this->title = $title;
+    }
+
+    function getResults() {
+        return $this->results;
+    }
+    
+    function getContent() {
+        return trim($this->results['content']);
     }
 
     /**
