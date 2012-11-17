@@ -8,10 +8,10 @@
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
  *  copies of the Software, and to permit persons to whom the Software is furnished 
  *  to do so, subject to the following conditions:
-
+ *
  *  The above copyright notice and this permission notice shall be included in all 
  *  copies or substantial portions of the Software.
-
+ *
  *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
  *  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
  *  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
@@ -21,8 +21,6 @@
  *
  *  @author Andrei Sambra 
  */
-
-namespace Classes;
 
 /**
  * WebID (delegated) Authentication class
@@ -153,7 +151,7 @@ class WebidAuth {
 
             if ( ! $this->cert)
             {
-                $this->err[] = Classes_WebidAuth::nocert;
+                $this->err[] = WebidAuth::nocert;
                 $this->code = "nocert";
                 $this->data = $this->retErr($this->code);
             }
@@ -170,7 +168,7 @@ class WebidAuth {
                     }
                 }
             } else {
-                $this->err[] = Classes_WebidAuth::noURI;
+                $this->err[] = WebidAuth::noURI;
                 $this->code = "noURI";
                 $this->data = $this->retErr($this->code);
             }
@@ -245,7 +243,7 @@ class WebidAuth {
         // verify client certificate using TLS
         if (($this->verified == 'SUCCESS') || ($this->verified == 'GENEROUS')) {
         } else {
-            $this->err[] = Classes_WebidAuth::certNoOwnership;
+            $this->err[] = WebidAuth::certNoOwnership;
             $this->code = "certNoOwnership";
             $this->data = $this->retErr($this->code);
             return false;
@@ -254,7 +252,7 @@ class WebidAuth {
         // check if we have URIs
         if ( ! sizeof($this->webid))
         {
-            $this->err[] = Classes_WebidAuth::noURI;
+            $this->err[] = WebidAuth::noURI;
             $this->code = "noURI";
             $this->data = $this->retErr($this->code);
             return false;
@@ -325,7 +323,7 @@ class WebidAuth {
         // we had no match, return false          
         if ( ! $match)
         {
-            $this->err[] = Classes_WebidAuth::noVerifiedWebId;
+            $this->err[] = WebidAuth::noVerifiedWebId;
             $this->code = "noVerifiedWebId";
             $this->data = $this->retErr($this->code);
 
